@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: video-downloader
-    runtime: docker
-    plan: free
-    autoDeploy: true
-    envVars:
-      - key: REQUEST_DELAY
-        value: "2"
