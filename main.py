@@ -65,6 +65,13 @@ def ydl_options(url, skip_download=False):
 
     platform = get_platform(url)
 
+    # Browser-like HTTP/TLS impersonation when curl_cffi is installed.
+    try:
+        import curl_cffi  # noqa: F401
+        options["impersonate"] = "chrome"
+    except Exception:
+        pass
+
     if platform == "Instagram":
         cookie_file = get_cookie_file()
         if cookie_file:
@@ -72,6 +79,10 @@ def ydl_options(url, skip_download=False):
 
     if PROXY_URL:
         options["proxy"] = PROXY_URL
+
+    source_address = os.environ.get("SOURCE_ADDRESS", "").strip()
+    if source_address:
+        options["source_address"] = source_address
 
     return options
 
@@ -316,7 +327,7 @@ def download():
             max_height = int(height)
             options["format"] = (
                 f"bestvideo[height<={max_height}]+bestaudio/"
-                f"best[height<={max_height}]"
+                f"best[height<={max_height}]/best"
             )
             options["merge_output_format"] = "mp4"
             download_name = "video.mp4"
@@ -361,16 +372,28 @@ def download():
         return clean_error(e), 500
 
 
+def _curl_cffi_version():
+    try:
+        import curl_cffi
+        return getattr(curl_cffi, "__version__", "installed")
+    except Exception:
+        return "not installed"
+
+
 @app.route("/health")
 def health():
     return jsonify({
         "status": "ok",
         "site": "Video Downloader",
         "developer": "Arun Rohilla",
-        "yt_dlp": yt_dlp.version.__version__
+        "yt_dlp": yt_dlp.version.__version__,
+        "curl_cffi": _curl_cffi_version(),
+        "proxy_configured": bool(PROXY_URL),
+        "cookies_configured": bool(INSTAGRAM_COOKIES or COOKIE_FILE.exists())
     })
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
+
