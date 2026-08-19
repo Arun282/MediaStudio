@@ -1,6 +1,7 @@
 import os
 import uuid
 import tempfile
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -17,6 +18,10 @@ DOWNLOAD_DIR.mkdir(exist_ok=True)
 COOKIE_FILE = Path("cookies.txt")
 PROXY_URL = os.environ.get("PROXY_URL", "").strip()
 INSTAGRAM_COOKIES = os.environ.get("INSTAGRAM_COOKIES", "").strip()
+
+# Small delay between yt-dlp jobs. It does NOT bypass platform limits.
+REQUEST_DELAY = float(os.environ.get("REQUEST_DELAY", "1.5"))
+_last_request = 0.0
 
 
 def get_platform(url):
@@ -45,14 +50,24 @@ def get_cookie_file():
     return None
 
 
+def throttle():
+    global _last_request
+    now = time.time()
+    wait = REQUEST_DELAY - (now - _last_request)
+    if wait > 0:
+        time.sleep(wait)
+    _last_request = time.time()
+
+
 def ydl_options(url, skip_download=False):
     options = {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-        "retries": 2,
-        "fragment_retries": 2,
+        "retries": 1,
+        "fragment_retries": 1,
         "skip_download": skip_download,
+        "socket_timeout": 30,
         "http_headers": {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -63,14 +78,15 @@ def ydl_options(url, skip_download=False):
         },
     }
 
-    platform = get_platform(url)
-
-    # Browser-like HTTP/TLS impersonation when curl_cffi is installed.
+    # curl_cffi is optional. If installed, yt-dlp builds that support
+    # impersonation can use browser-like TLS/HTTP behavior.
     try:
         import curl_cffi  # noqa: F401
         options["impersonate"] = "chrome"
     except Exception:
         pass
+
+    platform = get_platform(url)
 
     if platform == "Instagram":
         cookie_file = get_cookie_file()
@@ -87,23 +103,33 @@ def ydl_options(url, skip_download=False):
     return options
 
 
-def clean_error(error):
+def clean_error(error, platform=""):
     text = str(error)
 
     if "429" in text or "Too Many Requests" in text:
         return (
-            "Instagram ne request limit kar di hai (HTTP 429). "
-            "Public access/login/rate-limit ki wajah se request reject hui."
+            f"{platform or 'Video service'} ne server request ko rate-limit "
+            "kiya hai (HTTP 429). Thodi der baad retry karein. "
+            "Agar Render par repeatedly ho raha hai, authorized proxy/IP "
+            "ya required account authentication configure karni hogi."
         )
 
-    if "login required" in text.lower():
-        return "Instagram login required hai."
+    low = text.lower()
 
-    if "private" in text.lower():
+    if "login required" in low:
+        return f"{platform or 'This service'} login required hai."
+
+    if "private" in low:
         return "Ye content private hai ya public access available nahi hai."
 
-    if "Unsupported URL" in text:
+    if "unsupported url" in low:
         return "Ye URL supported nahi hai."
+
+    if "ffmpeg" in low:
+        return (
+            "FFmpeg server par available nahi hai. Render environment me "
+            "FFmpeg install/configure karein."
+        )
 
     return "Request failed: " + text[:500]
 
@@ -203,7 +229,10 @@ async function getVideoInfo(){
 }
 function createVideoFormats(formats){
  const box=document.getElementById("videoFormats");box.innerHTML="";
- if(!formats||!formats.length){box.innerHTML="<div class='format'>Compatible video format nahi mila.</div>";return;}
+ if(!formats||!formats.length){
+   box.innerHTML="<div class='format'><div><b>Video format unavailable</b><br><small style='color:#94a3b8'>Try again later or use an authorized account/proxy if the platform is rate-limiting the server.</small></div></div>";
+   return;
+ }
  formats.forEach(item=>{
   let badge=item.height>=1440?"purple":item.height>=1080?"blue":item.height>=720?"green":"";
   const row=document.createElement("div");row.className="format";
@@ -253,10 +282,17 @@ def api_info():
         }), 400
 
     try:
+        throttle()
         options = ydl_options(url, skip_download=True)
 
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=False)
+
+        # Some extractors can return a playlist/entries wrapper.
+        if not info.get("formats") and info.get("entries"):
+            entries = [e for e in info["entries"] if e]
+            if entries:
+                info = entries[0]
 
         wanted = [144, 240, 360, 480, 720, 1080, 1440]
         unique = {}
@@ -294,7 +330,7 @@ def api_info():
     except Exception as e:
         return jsonify({
             "success": False,
-            "error": clean_error(e)
+            "error": clean_error(e, platform)
         }), 500
 
 
@@ -308,10 +344,12 @@ def download():
     if not url:
         return "URL missing", 400
 
+    platform = get_platform(url)
     job = uuid.uuid4().hex
     output = str(DOWNLOAD_DIR / f"{job}.%(ext)s")
 
     try:
+        throttle()
         options = ydl_options(url)
         options["outtmpl"] = output
 
@@ -339,11 +377,7 @@ def download():
         if not files:
             return "Downloaded file nahi mili.", 500
 
-        if audio == "1":
-            preferred = DOWNLOAD_DIR / f"{job}.mp3"
-        else:
-            preferred = DOWNLOAD_DIR / f"{job}.mp4"
-
+        preferred = DOWNLOAD_DIR / f"{job}.mp3" if audio == "1" else DOWNLOAD_DIR / f"{job}.mp4"
         file_path = preferred if preferred.exists() else files[0]
 
         response = send_file(
@@ -368,8 +402,7 @@ def download():
                 file.unlink()
             except Exception:
                 pass
-
-        return clean_error(e), 500
+        return clean_error(e, platform), 500
 
 
 def _curl_cffi_version():
@@ -396,4 +429,3 @@ def health():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
-
