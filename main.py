@@ -78,13 +78,9 @@ def ydl_options(url, skip_download=False):
         },
     }
 
-    # curl_cffi is optional. If installed, yt-dlp builds that support
-    # impersonation can use browser-like TLS/HTTP behavior.
-    try:
-        import curl_cffi  # noqa: F401
-        options["impersonate"] = "chrome"
-    except Exception:
-        pass
+    # Do not force an impersonation target here.
+    # Render may not have a matching curl_cffi impersonation target.
+    # yt-dlp will use its normal HTTP client unless explicitly configured.
 
     platform = get_platform(url)
 
