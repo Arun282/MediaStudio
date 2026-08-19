@@ -1,4 +1,4 @@
-import re
+https://mediastudio-9qff.onrender.comimport re
 from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
 import yt_dlp
@@ -621,7 +621,11 @@ def extract_media_info():
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
-            'skip_download': True
+            'skip_download': True,
+            'geo_bypass': True,
+            'noplaylist': True,
+            'socket_timeout': 30,
+            'retries': 3
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -691,10 +695,14 @@ def extract_media_info():
             })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        error_text = str(e)
+        if 'not made this video available in your country' in error_text.lower() or 'geo restriction' in error_text.lower():
+            error_text = 'Ye video is server ke region me available nahi hai. Kisi aur publicly available video link ko try karein.'
+        return jsonify({'success': False, 'error': error_text}), 500
 
 if __name__ == '__main__':
     print("==================================================")
     print("MediaStudio Downloader Live at: http://127.0.0.1:5000")
     print("==================================================")
     app.run(host='0.0.0.0', port=5000, debug=False)
+
