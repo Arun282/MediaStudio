@@ -1,3 +1,4 @@
+import os
 import re
 from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
@@ -6,9 +7,9 @@ import yt_dlp
 app = Flask(__name__)
 CORS(app)
 
-# ==========================================
-# FULL DESIGN FRONTEND (HTML + CSS + JS)
-# ==========================================
+# ==============================================================================
+# FULL FRONTEND (HTML + CSS + JAVASCRIPT)
+# ==============================================================================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="hi">
@@ -258,7 +259,7 @@ HTML_TEMPLATE = """
             gap: 6px;
         }
 
-        /* Format Tabs (Video vs Audio) */
+        /* Format Tabs */
         .format-nav {
             display: flex;
             gap: 10px;
@@ -455,13 +456,13 @@ HTML_TEMPLATE = """
         function extractYouTubeID(url) {
             const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=|shorts\/)|youtu\.be\/)([^"&?\/\s]{11})/i;
             const match = url.match(regExp);
-            return (match && match[1]) ? match[1] : null;
+            return (match && match) ? match : null;
         }
 
         function extractInstagramID(url) {
             const regExp = /(?:instagram\.com\/(?:p|reel|reels)\/)([^/?#&]+)/i;
             const match = url.match(regExp);
-            return (match && match[1]) ? match[1] : null;
+            return (match && match) ? match : null;
         }
 
         async function processDownloadRequest() {
@@ -498,7 +499,7 @@ HTML_TEMPLATE = """
             }
 
             try {
-                // Call local Flask Backend API
+                // Call local / cloud Flask Backend API
                 const response = await fetch('/api/get-info', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -513,7 +514,6 @@ HTML_TEMPLATE = """
                     return;
                 }
 
-                // If player was empty (e.g. standard direct link or unsupported iframe embed), use thumbnail or video tag
                 if (!playerWrapper.innerHTML.trim() && data.thumbnail) {
                     playerWrapper.innerHTML = `<img src="${data.thumbnail}" style="width:100%; height:100%; object-fit:cover;" alt="Thumbnail">`;
                 }
@@ -601,9 +601,9 @@ HTML_TEMPLATE = """
 </html>
 """
 
-# ==========================================
-# FLASK BACKEND ROUTES
-# ==========================================
+# ==============================================================================
+# FLASK BACKEND (WITH CLOUD / RENDER BOT BYPASS CONFIGURATION)
+# ==============================================================================
 
 @app.route('/')
 def index():
@@ -618,10 +618,25 @@ def extract_media_info():
         return jsonify({'success': False, 'error': 'URL missing'}), 400
 
     try:
+        # Configuration to bypass YouTube & Instagram Cloud/DataCenter IP bans
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
-            'skip_download': True
+            'skip_download': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'ios', 'web_safari']
+                },
+                'instagram': {
+                    'app_id': '936619743392459'
+                }
+            },
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Sec-Fetch-Mode': 'navigate'
+            }
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -662,10 +677,10 @@ def extract_media_info():
                             'download_url': direct_url
                         })
 
-            # Sort video by resolution descending (e.g., 1440p, 1080p, 720p, 480p, 360p, 240p, 144p)
+            # Sort video resolutions descending (e.g., 1440p, 1080p, 720p, 480p, 360p, 240p, 144p)
             video_formats.sort(key=lambda x: int(re.sub(r'\D', '', x['resolution'])), reverse=True)
             
-            # Sort audio by bitrate descending
+            # Sort audio bitrates descending
             audio_formats.sort(key=lambda x: x['abr'], reverse=True)
 
             # Fallback if no separate audio stream found
@@ -676,7 +691,6 @@ def extract_media_info():
                     'download_url': video_formats[0]['download_url']
                 })
 
-            # Platform Name Detection
             extractor = info.get('extractor_key', 'Web')
 
             return jsonify({
@@ -694,7 +708,9 @@ def extract_media_info():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
-    print("==================================================")
-    print("MediaStudio Downloader Live at: http://127.0.0.1:5000")
-    print("==================================================")
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    port = int(os.environ.get("PORT", 5000))
+    print(f"==================================================")
+    print(f"MediaStudio Running on Port: {port}")
+    print(f"==================================================")
+    app.run(host='0.0.0.0', port=port, debug=False)
+
