@@ -68,7 +68,7 @@ class ChargingView(context: Context) : View(context) {
 
         textPaint.color = Color.WHITE
         textPaint.textSize = radius * .34f
-        c.drawText("\${pct}%", cx, cy + 5f, textPaint)
+        c.drawText(pct.toString() + "%", cx, cy + 5f, textPaint)
 
         textPaint.color = Color.rgb(125, 170, 255)
         textPaint.textSize = radius * .19f
@@ -111,7 +111,7 @@ class ChargingView(context: Context) : View(context) {
 
         val cycles = snapshot.cycleCount?.toString() ?: "--"
         c.drawText(
-            "CYCLES \${cycles}   •   CAP %.0f mAh".format(snapshot.chargeCounterMah),
+            "CYCLES " + cycles + "   •   CAP %.0f mAh".format(snapshot.chargeCounterMah),
             cx, height*.805f, textPaint
         )
 
