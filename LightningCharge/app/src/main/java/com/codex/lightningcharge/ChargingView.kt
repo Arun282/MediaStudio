@@ -106,10 +106,8 @@ class ChargingView(context: Context) : View(context) {
         )
 
         val health = BatteryReader.healthLabel(snapshot.health)
-        c.drawText(
-            "HEALTH \${health}   •   \${snapshot.technology.ifBlank { "BATTERY" }}",
-            cx, height*.75f, textPaint
-        )
+        val tech = snapshot.technology.ifBlank { "BATTERY" }
+        c.drawText("HEALTH " + health + "   •   " + tech, cx, height*.75f, textPaint)
 
         val cycles = snapshot.cycleCount?.toString() ?: "--"
         c.drawText(
