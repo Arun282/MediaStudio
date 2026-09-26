@@ -2,6 +2,7 @@ package com.codex.lightningcharge
 
 import android.app.*
 import android.content.*
+import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.os.*
 import androidx.core.app.NotificationCompat
