@@ -37,7 +37,10 @@ class ChargingService : Service() {
     private fun updateNotification(i: Intent) {
         val level = i.getIntExtra(BatteryManager.EXTRA_LEVEL, 0)
         val voltageMv = i.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0)
-        val currentUa = i.getIntExtra(BatteryManager.EXTRA_CURRENT_NOW, 0)
+        val batteryManager = getSystemService(BATTERY_SERVICE) as BatteryManager
+        val currentUa = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+        } else 0
         val watts = (voltageMv / 1000.0) * (abs(currentUa) / 1_000_000.0)
         val temp = i.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) / 10.0
         val text = if (charging) "$level% • %.1f W • %.1f°C".format(watts, temp) else "Not charging • $level%"
