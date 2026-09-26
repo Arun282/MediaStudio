@@ -98,7 +98,7 @@ class ChargingView(context: Context) : View(context) {
         textPaint.color = Color.LTGRAY
         textPaint.textSize = 14f
         val time = snapshot.estimatedMinutesToFull?.let { formatMinutes(it) } ?: "--"
-        c.drawText("ETA FULL  \${time}   •   \${BatteryReader.pluggedLabel(snapshot.plugged)}", cx, height*.64f, textPaint)
+        c.drawText("ETA FULL  " + time + "   •   " + BatteryReader.pluggedLabel(snapshot.plugged), cx, height*.64f, textPaint)
 
         c.drawText(
             "PEAK %.2f W   •   AVG %.2f W".format(peakWatts, avgWatts),
@@ -125,6 +125,6 @@ class ChargingView(context: Context) : View(context) {
     private fun formatMinutes(minutes: Int): String {
         val h = minutes / 60
         val m = minutes % 60
-        return if (h > 0) "\${h}h \${m}m" else "\${m}m"
+        return if (h > 0) h.toString() + "h " + m + "m" else m.toString() + "m"
     }
 }
