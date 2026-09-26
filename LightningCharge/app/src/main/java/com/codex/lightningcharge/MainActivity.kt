@@ -13,29 +13,23 @@ import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import kotlin.math.abs
+import kotlin.math.max
 
 class MainActivity : AppCompatActivity() {
     private lateinit var chargingView: ChargingView
+    private var sessionPeakWatts = 0.0
+    private var sessionSumWatts = 0.0
+    private var sessionSamples = 0
+    private var sessionStarted = false
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
-                updateBattery(intent)
-                val status = intent.getIntExtra(
-                    BatteryManager.EXTRA_STATUS,
-                    BatteryManager.BATTERY_STATUS_UNKNOWN
-                )
-                val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                        status == BatteryManager.BATTERY_STATUS_FULL
-
-            }
+            if (intent?.action == Intent.ACTION_BATTERY_CHANGED) updateBattery(intent)
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.statusBarColor = android.graphics.Color.BLACK
         window.navigationBarColor = android.graphics.Color.BLACK
@@ -44,68 +38,51 @@ class MainActivity : AppCompatActivity() {
         setContentView(chargingView)
 
         if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) != PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                100
-            )
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 100)
         }
     }
 
     override fun onStart() {
         super.onStart()
-        val initial = registerReceiver(
-            batteryReceiver,
-            IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        )
+        val initial = registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         if (initial != null) updateBattery(initial)
     }
 
     override fun onStop() {
-        try {
-            unregisterReceiver(batteryReceiver)
-        } catch (_: Exception) {
-        }
+        try { unregisterReceiver(batteryReceiver) } catch (_: Exception) {}
         super.onStop()
     }
 
     private fun updateBattery(intent: Intent) {
-        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, 0)
-        val voltageMv = intent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0)
-        val voltage = voltageMv / 1000.0
-
-        val status = intent.getIntExtra(
-            BatteryManager.EXTRA_STATUS,
-            BatteryManager.BATTERY_STATUS_UNKNOWN
-        )
-        val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                status == BatteryManager.BATTERY_STATUS_FULL
-
-        val manager = getSystemService(BATTERY_SERVICE) as BatteryManager
-        val rawCurrentUa = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-        } else {
-            0
+        val snapshot = BatteryReader.read(this, intent)
+        if (snapshot.charging && !sessionStarted) {
+            sessionStarted = true
+            sessionPeakWatts = 0.0
+            sessionSumWatts = 0.0
+            sessionSamples = 0
+        } else if (!snapshot.charging && sessionStarted) {
+            saveSessionPeak()
+            sessionStarted = false
         }
 
-        val currentUa = if (rawCurrentUa == Int.MIN_VALUE) 0 else abs(rawCurrentUa)
-        val currentMa = currentUa / 1000
-        val watts = voltage * (currentUa / 1_000_000.0)
-        val temperature =
-            intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) / 10.0
+        if (snapshot.charging) {
+            sessionPeakWatts = max(sessionPeakWatts, snapshot.watts)
+            sessionSumWatts += snapshot.watts
+            sessionSamples++
+        }
 
-        chargingView.update(
-            percent = level.coerceIn(0, 100),
-            watts = watts,
-            voltage = voltage,
-            currentMa = currentMa,
-            temperature = temperature,
-            charging = charging
-        )
+        val avg = if (sessionSamples > 0) sessionSumWatts / sessionSamples else 0.0
+        chargingView.update(snapshot, sessionPeakWatts, avg)
+    }
+
+    private fun saveSessionPeak() {
+        if (sessionSamples == 0) return
+        val prefs = getSharedPreferences("charging_stats", MODE_PRIVATE)
+        prefs.edit()
+            .putFloat("last_peak_w", sessionPeakWatts.toFloat())
+            .putFloat("last_avg_w", (sessionSumWatts / sessionSamples).toFloat())
+            .apply()
     }
 }
