@@ -5,6 +5,10 @@ import android.content.*
 import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.os.*
+import android.provider.Settings
+import android.graphics.PixelFormat
+import android.view.Gravity
+import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 
 class ChargingService : Service() {
@@ -12,6 +16,8 @@ class ChargingService : Service() {
     private var charging = false
     private var lastSnapshot: BatterySnapshot? = null
     private var peakWatts = 0.0
+    private var overlayView: ChargingOverlayView? = null
+    private var windowManager: WindowManager? = null
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -21,6 +27,7 @@ class ChargingService : Service() {
             charging = snapshot.charging
             if (charging) peakWatts = maxOf(peakWatts, snapshot.watts)
             updateNotification(snapshot)
+            updateOverlay(snapshot)
             if (!charging) stopSelf()
         }
     }
@@ -53,6 +60,24 @@ class ChargingService : Service() {
             lastSnapshot?.let { updateNotification(it) }
             if (charging) handler.postDelayed(this, 1000L)
         }
+    }
+
+    private fun updateOverlay(s: BatterySnapshot) {
+        if (!Settings.canDrawOverlays(this)) return
+        try {
+            if (overlayView == null) {
+                overlayView = ChargingOverlayView(this)
+                windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+                val type = if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE
+                val params = WindowManager.LayoutParams(180, 180, type, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, PixelFormat.TRANSLUCENT).apply {
+                    gravity = Gravity.TOP or Gravity.END
+                    x = 18
+                    y = 180
+                }
+                windowManager?.addView(overlayView, params)
+            }
+            overlayView?.update(s)
+        } catch (_: Exception) {}
     }
 
     private fun updateNotification(s: BatterySnapshot) {
@@ -113,6 +138,9 @@ class ChargingService : Service() {
 
     override fun onDestroy() {
         try { unregisterReceiver(receiver) } catch (_: Exception) {}
+        try { overlayView?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
+        overlayView = null
+        windowManager = null
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
