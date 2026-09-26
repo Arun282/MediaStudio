@@ -29,9 +29,6 @@ class MainActivity : AppCompatActivity() {
                 val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
                         status == BatteryManager.BATTERY_STATUS_FULL
 
-                // Start the background monitor only while the app is visible.
-                // After this, the foreground service can continue when the screen turns off.
-                if (charging) startMonitorSafely()
             }
         }
     }
@@ -75,17 +72,6 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {
         }
         super.onStop()
-    }
-
-    private fun startMonitorSafely() {
-        try {
-            ContextCompat.startForegroundService(
-                this,
-                Intent(this, ChargingService::class.java)
-            )
-        } catch (_: Exception) {
-            // Never crash the charging screen if the system blocks the service.
-        }
     }
 
     private fun updateBattery(intent: Intent) {
