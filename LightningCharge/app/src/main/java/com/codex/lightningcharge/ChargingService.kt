@@ -40,7 +40,7 @@ class ChargingService : Service() {
 
         try {
             val notification = buildNotification("Charging monitor active")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (Build.VERSION.SDK_INT >= 34) {
                 startForeground(
                     10,
                     notification,
