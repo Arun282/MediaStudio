@@ -8,6 +8,8 @@
     <application
         android:allowBackup="true"
         android:label="Lightning Charge"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.LightningCharge">
 
         <activity
